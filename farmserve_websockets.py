@@ -9,7 +9,8 @@ import datetime
 import pytz
 import json
 from influxdb import InfluxDBClient
-ws_th_clients = []
+
+ws_clients = []
 
 
 class THWebSocket(WebSocket):
@@ -19,6 +20,7 @@ class THWebSocket(WebSocket):
         self.db_client = InfluxDBClient(host='68.183.44.212', port=8086)
         self.db_client.create_database('farm_iot_sensor_data')
         self.db_client.switch_database('farm_iot_sensor_data')
+        self.is_listener = False
 
     def get_db_entry_json(self, node, temperature, humidity, soil_moisture):
         db_entry_data = [{
@@ -56,6 +58,16 @@ class THWebSocket(WebSocket):
             cam_ready = datajson['cam_ready']
             ip = datajson['ip']
             print("Cam Ready:", cam_ready, "IP:", ip)
+        
+            if cam_ready == 1:
+                for client in ws_clients: #Forward data to pic listener
+                    if client.is_listener:
+                        client.send_message(self.data)
+                        #client.send_message("Cam ready for %s IP: %s" % (self.node_id, ip))
+
+        if "_id" in self.data and "pic_listener" in self.data:
+            print("Pic Listener registered")
+            self.is_listener = True
 
         #for client in ws_th_clients: #Forward data web Trainers
         #    if client != self:
@@ -67,12 +79,12 @@ class THWebSocket(WebSocket):
         #        client.send_message(self.data)
 
     def connected(self):
-        print(self.address, 'TH Node Connected')
-          
+        print(self.address, 'Client Connected')
+        ws_clients.append(self)
 
     def handle_close(self):
-        print(self.address, 'TH Node Closed')
-
+        print(self.address, 'Client Closed')
+        ws_clients.remove(self)
 
 class THWebSocketThread(threading.Thread):
     def __init__(self):
